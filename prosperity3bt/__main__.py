@@ -13,6 +13,7 @@ from prosperity3bt.file_reader import FileReader, FileSystemReader, PackageResou
 from prosperity3bt.models import BacktestResult, TradeMatchingMode
 from prosperity3bt.open import open_visualizer
 from prosperity3bt.runner import run_backtest
+import json
 
 
 def parse_algorithm(algorithm: Path) -> Any:
@@ -162,6 +163,12 @@ def print_overall_summary(results: list[BacktestResult]) -> None:
 
     print(f"Total profit: {total_profit:,.0f}")
 
+    try:
+        with open("total_profit.out", "w", encoding="utf-8") as f:
+            f.write(f"{total_profit:.0f}\n")
+    except Exception as e:
+        print(f"Error writing to total_profit.out: {e}")
+
 
 def format_path(path: Path) -> str:
     cwd = Path.cwd()
@@ -194,6 +201,7 @@ def cli(
     no_progress: Annotated[bool, Option("--no-progress", help="Don't show progress bars.")] = False,
     original_timestamps: Annotated[bool, Option("--original-timestamps", help="Preserve original timestamps in output log rather than making them increase across days.")] = False,
     version: Annotated[bool, Option("--version", "-v", help="Show the program's version number and exit.", is_eager=True, callback=version_callback)] = False,
+    using_params: Annotated[Optional[Path], Option("--using-params", help="Path to a JSON file with parameters to pass into the Trader.", show_default=False, exists=True, file_okay=True, dir_okay=False, resolve_path=True)] = None,
 ) -> None:  # fmt: skip
     if out is not None and no_out:
         print("Error: --out and --no-out are mutually exclusive")
@@ -216,13 +224,14 @@ def cli(
     show_progress_bars = not no_progress and not print_output
 
     results = []
+    params = load_params_file(using_params)
     for round_num, day_num in parsed_days:
         print(f"Backtesting {algorithm} on round {round_num} day {day_num}")
 
         reload(trader_module)
 
         result = run_backtest(
-            trader_module.Trader(),
+            trader_module.Trader(params),
             file_reader,
             round_num,
             day_num,
@@ -249,6 +258,15 @@ def cli(
     if vis and output_file is not None:
         open_visualizer(output_file)
 
+def load_params_file(params_path: Optional[Path]) -> Optional[dict[str, Any]]:
+    if params_path is None:
+        return None
+    try:
+        with params_path.open("r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Error loading parameters file: {e}")
+        sys.exit(1)
 
 def main() -> None:
     app()
@@ -256,3 +274,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
